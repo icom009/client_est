@@ -1,6 +1,19 @@
+"""
+EST 출결 화면 캡처
+
+캡처 전에 Zoom 회의 상태를 확인하고 필요시 재참가합니다.
+
+사용법:
+    python estcapture.py           # 자동 모드 (트리거 시간에만)
+    python estcapture.py --force   # 강제 캡처
+    python estcapture.py 7         # 7교시 단축 스케줄
+    python estcapture.py --no-zoom # Zoom 체크 안함
+"""
+
 import os
 import sys
 from datetime import datetime, time
+from pathlib import Path
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -13,6 +26,15 @@ except ImportError:
     print("Pillow 라이브러리가 설치되지 않았습니다.")
     print("터미널에서 'pip install Pillow'를 실행해주세요.")
     sys.exit(1)
+
+# zoom_utils import
+sys.path.insert(0, str(Path(__file__).parent.parent / "zoom"))
+try:
+    from zoom_utils import ensure_meeting
+    ZOOM_AVAILABLE = True
+except ImportError:
+    ZOOM_AVAILABLE = False
+    print("[!] zoom_utils를 찾을 수 없습니다. Zoom 체크 비활성화.")
 
 # --- 설정 ---
 BASE_FOLDER = r"C:\Users\smhrd\Desktop\출결"
@@ -28,7 +50,6 @@ def get_belonging_session(now, schedule_type="default"):
     t = now.time()
 
     # 7교시 단축 스케줄(예시: 09:00~16:50까지 7차시로 운영)
-    # 필요 시 실제 운영 시간표에 맞게 경계값을 조정하세요.
     if schedule_type == "7":
         if time(9, 0) <= t < time(10, 0):
             return "1차시"
@@ -47,8 +68,7 @@ def get_belonging_session(now, schedule_type="default"):
         else:
             return None
 
-    # 기본 9교시 스케줄 (요구사항: 10:05는 2차시가 되어야 하므로 10:00~10:50을 2차시로)
-    # 필요 시 실제 운영 시간표에 맞게 경계값을 조정하세요.
+    # 기본 9교시 스케줄
     if time(9, 0) <= t < time(10, 0):
         return "1차시"
     elif time(10, 0) <= t < time(10, 50):
@@ -66,15 +86,12 @@ def get_belonging_session(now, schedule_type="default"):
     elif time(16, 50) <= t < time(17, 50):
         return "8차시"
     else:
-        # 17:50 이후(또는 스케줄 밖)는 "끝"으로 처리 (원하시면 None으로 바꿔도 됩니다)
         return "끝"
 
 
 def is_capture_time(now, schedule_type="default"):
     """
     '자동 캡처 트리거 시간'인지 여부만 판단.
-    - force=True면 이 검사를 무시하고 촬영함.
-    - 기존 코드의 "짧은 구간(약 3분)" 트리거를 유지.
     """
     t = now.time()
     weekday = now.weekday()  # 0 = 월요일
@@ -88,11 +105,10 @@ def is_capture_time(now, schedule_type="default"):
             or time(13, 59) <= t < time(14, 2)
             or time(14, 59) <= t < time(15, 2)
             or time(15, 59) <= t < time(16, 2)
-            or time(16, 49) <= t < time(16, 52)  # 종료
+            or time(16, 49) <= t < time(16, 52)
         )
 
     # 기본(9교시)
-    # ✅ 월요일만 16:50에도 '끝'을 추가로 찍는 기존 규칙 유지
     monday_extra_end = (weekday == 0 and (time(16, 49) <= t < time(16, 52)))
 
     return (
@@ -104,30 +120,40 @@ def is_capture_time(now, schedule_type="default"):
         or (time(13, 59) <= t < time(14, 2))
         or (time(14, 59) <= t < time(15, 2))
         or (time(15, 59) <= t < time(16, 2))
-        or (time(16, 59) <= t < time(17, 2))  # 8차시 트리거
-        or (time(17, 49) <= t < time(17, 52))  # 끝 트리거
+        or (time(16, 59) <= t < time(17, 2))
+        or (time(17, 49) <= t < time(17, 52))
     )
 
 
-def take_screenshot(schedule_type="default", force=False, label_prefix=None):
+def take_screenshot(schedule_type="default", force=False, label_prefix=None, check_zoom=True):
     """
     전체 화면 스크린샷을 찍고 저장.
-    - force=False: 자동 트리거 시간에만 촬영
-    - force=True : 트리거 시간 무시하고 촬영
-    - 파일명 세션(차시)은 항상 '현재 시각이 속한 차시'로 계산
-    - label_prefix: 파일명에 추가 라벨을 붙이고 싶을 때 사용 (예: "강제")
+
+    Args:
+        schedule_type: "default" (9교시) 또는 "7" (7교시)
+        force: True면 트리거 시간 무시하고 촬영
+        label_prefix: 파일명에 추가 라벨
+        check_zoom: True면 캡처 전 Zoom 회의 상태 확인
     """
     now = datetime.now()
 
     # 자동 트리거가 아니면 종료 (단, force면 무시)
     if (not force) and (not is_capture_time(now, schedule_type)):
         print(f"[{now.strftime('%H:%M:%S')}] 스크린샷 시간이 아닙니다. 종료합니다.")
-        return
+        return False
 
-    # 파일명에 들어갈 차시: 항상 '속한 차시'
+    # Zoom 회의 상태 확인 및 필요시 재참가
+    if check_zoom and ZOOM_AVAILABLE:
+        print(f"[{now.strftime('%H:%M:%S')}] Zoom 회의 상태 확인 중...")
+        if not ensure_meeting(verbose=True):
+            print("[X] Zoom 회의 연결 실패. 캡처를 건너뜁니다.")
+            return False
+        print("[O] Zoom 회의 준비 완료")
+        print()
+
+    # 파일명에 들어갈 차시
     session_name = get_belonging_session(now, schedule_type)
     if session_name is None:
-        # 스케줄 밖이면 파일명 최소 보장
         session_name = "기타"
 
     # 1) 날짜 폴더 생성
@@ -137,15 +163,13 @@ def take_screenshot(schedule_type="default", force=False, label_prefix=None):
         os.makedirs(date_folder_path, exist_ok=True)
     except OSError as e:
         print(f"폴더 생성 실패: {e}")
-        return
+        return False
 
     # 2) 파일명 생성
     file_date = now.strftime("%m%d")
     file_time = now.strftime("%H%M")
     date_time_part = f"({file_date}_{file_time})"
 
-    # 라벨(선택): 강제 호출임을 남기고 싶으면 label_prefix="강제"로 호출
-    # 요구사항상 차시는 그대로 노출되어야 하므로, "강제"는 선택(원하시면 제거 가능)
     if label_prefix:
         session_part = f"_{session_name}_{label_prefix}"
     else:
@@ -159,14 +183,17 @@ def take_screenshot(schedule_type="default", force=False, label_prefix=None):
         img = ImageGrab.grab()
         img.save(file_path, "JPEG")
         print(f"SAVED:{file_path}")
+        return True
     except Exception as e:
         print(f"스크린샷 저장 실패: {e}")
+        return False
 
 
 if __name__ == "__main__":
-    schedule_type = "default"  # 기본 9교시
+    schedule_type = "default"
     force = False
     label_prefix = None
+    check_zoom = True
 
     args = [arg.lower() for arg in sys.argv[1:]]
 
@@ -175,20 +202,24 @@ if __name__ == "__main__":
         schedule_type = "7"
         print("7교시 단축 스케줄로 실행합니다...")
 
-    # 강제 캡처 (트리거 시간 무시)
-    # ※ 요구사항: 강제여도 '차시'는 현재 시간의 차시로 들어가야 함 -> 이미 반영됨
+    # 강제 캡처
     if "--force" in args or "force" in args:
         force = True
-        # 강제 호출 로그/라벨이 필요하면 아래를 사용
-        # label_prefix = "강제"
         print("강제 모드로 스크린샷을 실행합니다...")
 
-    # 테스트용(언제든 찍되, 차시는 현재 시간 소속 차시)
-    # 기존 코드의 '테스트'는 파일명에 _테스트를 넣는 방식이었는데,
-    # 현재 요구사항은 '차시가 그대로 노출'이 우선이라, 테스트도 차시를 유지합니다.
+    # Zoom 체크 비활성화
+    if "--no-zoom" in args or "no-zoom" in args:
+        check_zoom = False
+        print("Zoom 체크를 비활성화합니다...")
+
+    # 테스트 모드
     if "test" in args:
         force = True
-        # label_prefix = "테스트"  # 필요 시만 켜세요
         print("테스트 모드로 스크린샷을 실행합니다...")
 
-    take_screenshot(schedule_type=schedule_type, force=force, label_prefix=label_prefix)
+    take_screenshot(
+        schedule_type=schedule_type,
+        force=force,
+        label_prefix=label_prefix,
+        check_zoom=check_zoom
+    )

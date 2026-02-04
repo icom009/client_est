@@ -141,6 +141,145 @@ def check_meeting_active():
 
 
 # ============================================
+# 경고창/팝업 처리 함수
+# ============================================
+def check_disconnect_alert():
+    """
+    네트워크 끊김 경고창이 있는지 확인
+
+    Returns:
+        bool: 경고창 존재 여부
+    """
+    disconnect_keywords = [
+        # 한글
+        "연결이 끊어", "연결 끊김", "연결이 불안정", "네트워크 연결",
+        "회의에서 연결", "재연결", "인터넷 연결",
+        # 영문
+        "disconnected", "connection", "unstable", "reconnect",
+        "network", "internet", "lost connection"
+    ]
+
+    try:
+        desktop = Desktop(backend="uia")
+        for win in desktop.windows():
+            try:
+                title = win.window_text().lower()
+                for keyword in disconnect_keywords:
+                    if keyword.lower() in title:
+                        return True
+
+                # 창 내부 텍스트도 확인
+                try:
+                    texts = win.descendants(control_type="Text")
+                    for t in texts[:10]:  # 최대 10개만 확인
+                        text = t.window_text().lower()
+                        for keyword in disconnect_keywords:
+                            if keyword.lower() in text:
+                                return True
+                except:
+                    pass
+            except:
+                continue
+    except:
+        pass
+
+    return False
+
+
+def dismiss_disconnect_alert():
+    """
+    네트워크 끊김 경고창 닫기
+
+    Returns:
+        bool: 경고창을 닫았는지 여부
+    """
+    dismiss_buttons = [
+        # 한글
+        "확인", "닫기", "나가기", "회의 나가기", "종료",
+        # 영문
+        "OK", "Close", "Leave", "Leave Meeting", "End", "Got it"
+    ]
+
+    dismissed = False
+
+    try:
+        desktop = Desktop(backend="uia")
+        for win in desktop.windows():
+            try:
+                # 버튼 찾아서 클릭
+                for btn_title in dismiss_buttons:
+                    try:
+                        btn = win.child_window(title=btn_title, control_type="Button")
+                        if btn.exists(timeout=0.3):
+                            btn.click_input()
+                            time.sleep(0.5)
+                            dismissed = True
+                    except:
+                        continue
+
+                # title_re로도 시도
+                for btn_title in dismiss_buttons:
+                    try:
+                        btn = win.child_window(title_re=f".*{btn_title}.*", control_type="Button")
+                        if btn.exists(timeout=0.3):
+                            btn.click_input()
+                            time.sleep(0.5)
+                            dismissed = True
+                    except:
+                        continue
+            except:
+                continue
+    except:
+        pass
+
+    return dismissed
+
+
+def cleanup_zoom():
+    """
+    Zoom 앱 완전 종료 (깔끔한 재시작을 위해)
+
+    Returns:
+        bool: 성공 여부
+    """
+    # 경고창 닫기 시도
+    for _ in range(3):
+        dismiss_disconnect_alert()
+        time.sleep(0.3)
+
+    # 모든 Zoom 창 닫기
+    try:
+        desktop = Desktop(backend="uia")
+        for win in desktop.windows():
+            try:
+                class_name = win.class_name()
+                if "zoom" in class_name.lower() or class_name.startswith("ZP"):
+                    try:
+                        win.close()
+                    except:
+                        pass
+            except:
+                continue
+    except:
+        pass
+
+    time.sleep(1)
+
+    # taskkill로 프로세스 강제 종료
+    try:
+        subprocess.run(
+            ["taskkill", "/f", "/im", "Zoom.exe"],
+            capture_output=True,
+            text=True
+        )
+    except:
+        pass
+
+    time.sleep(1)
+    return True
+
+
+# ============================================
 # 창 제어 함수
 # ============================================
 def activate_meeting_window():
@@ -609,6 +748,11 @@ def ensure_meeting(verbose=True):
         if ensure_meeting():
             take_screenshot()
 
+    처리 흐름:
+        1. 연결 끊김 경고창 확인 → 있으면 Zoom 정리 후 재참가
+        2. 회의 중인지 확인 → 회의 중이면 창 활성화
+        3. 회의 중 아님 → 재참가
+
     Args:
         verbose: 로그 출력 여부
 
@@ -623,30 +767,48 @@ def ensure_meeting(verbose=True):
     log("회의 상태 확인")
     log("=" * 50)
 
-    # 1. 이미 회의 중인지 확인
-    if is_in_meeting():
+    need_rejoin = False
+
+    # 1. 연결 끊김 경고창 확인 → 있으면 닫고 재참가 필요
+    if check_disconnect_alert():
+        log("[!] 연결 끊김 경고창 감지")
+        log("[*] 경고창 닫는 중...")
+        dismiss_disconnect_alert()
+        time.sleep(0.5)
+        need_rejoin = True
+
+    # 2. 회의 중인지 확인
+    elif not is_in_meeting():
+        log("[X] 회의 연결 안됨")
+        need_rejoin = True
+
+    # 3. 재참가 필요하면 Zoom 정리 후 재참가
+    if need_rejoin:
+        log("[*] Zoom 정리 중...")
+        cleanup_zoom()
+        log("[O] Zoom 정리 완료")
+        log("")
+        log("회의 참가 시작...")
+
+        if not join_meeting(verbose=verbose):
+            log("[X] 회의 재참가 실패")
+            return False
+        log("[O] 회의 재참가 성공!")
+    else:
         log("[O] 회의 연결 중")
 
-        # 창 활성화
-        if activate_meeting_window():
-            log("[O] 창 활성화 완료")
-            click_meeting_tab()
-            return True
-        else:
-            log("[!] 창 활성화 실패, 재참가 시도")
-    else:
-        log("[X] 회의 연결 안됨, 재참가 시도")
-
-    # 2. 회의 재참가
+    # 4. 공통: 창 활성화 + 탭 클릭 (재참가 여부와 무관하게 항상 실행)
     log("")
-    log("회의 참가 시작...")
-
-    if join_meeting(verbose=verbose):
-        log("[O] 회의 재참가 성공!")
-        return True
+    log("[*] 창 활성화 중...")
+    if activate_meeting_window():
+        log("[O] 창 활성화 완료")
     else:
-        log("[X] 회의 재참가 실패")
-        return False
+        log("[!] 창 활성화 실패")
+
+    click_meeting_tab()
+    log("[O] 회의 탭 클릭 완료")
+
+    return True
 
 
 # ============================================
