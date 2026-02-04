@@ -1,11 +1,10 @@
-# EST 강의장 자동화 클라이언트
+# EST 강의장 자동화 클라이언트 (출결용)
 
-강의장 PC에서 사용하는 자동화 스크립트 모음입니다.
+원격 강의 출결 관리를 위한 자동화 스크립트 모음입니다.
 
-- **녹화 파일 업로드**: rclone으로 서버 업로드 (Jellyfin 연동)
-- **출결 화면 캡처**: 교시별 자동 스크린샷
+- **출결 화면 캡처**: 교시별 Zoom 화면 자동 스크린샷
+- **Zoom 자동화**: 회의 자동 참가/퇴장, 네트워크 끊김 자동 복구
 - **OBS 녹화 제어**: WebSocket으로 녹화 시작/중지
-- **Zoom 자동화**: 회의 자동 참가/퇴장
 
 ## 설치
 
@@ -64,7 +63,9 @@ client_est/
 │   ├── obs_recordStart.py  # 녹화 시작
 │   └── obs_recordStop.py   # 녹화 중지
 │
-└── zoom/                # Zoom 자동화
+└── zoom/                # Zoom 자동화 (출결용 특수 케이스)
+    ├── zoom_utils.py    # 핵심 유틸리티 모듈
+    ├── zoom_check.py    # 사전 체크 (캡처 15분 전)
     ├── zoom_join.py     # 회의 참가
     ├── zoom_leave.py    # 회의 나가기
     ├── move_videos.py   # 녹화 파일 이동
@@ -157,7 +158,22 @@ python obs/obs_recordStop.py
 
 ## Zoom 자동화 (zoom/)
 
-Zoom 회의 참가/퇴장을 자동화합니다.
+> **특수 케이스**: 이 모듈은 EST 출결 시스템 전용입니다.
+> 원격 강의 출결 확인을 위해 Zoom 회의 화면을 캡처해야 하는 환경에서 사용됩니다.
+> - 네트워크 불안정 시 자동 재연결
+> - 캡처 전 회의 상태 사전 체크
+> - 회의 창 자동 활성화
+
+### 파일 구조
+```
+zoom/
+├── zoom_utils.py        # 핵심 유틸리티 모듈
+├── zoom_check.py        # 사전 체크 (캡처 15분 전 실행)
+├── zoom_join.py         # 회의 참가
+├── zoom_leave.py        # 회의 나가기
+├── move_videos.py       # 녹화 파일 이동
+└── config.example.yaml  # 설정 예시
+```
 
 ### 설정
 ```bash
@@ -167,6 +183,9 @@ cp zoom/config.example.yaml zoom/config.yaml
 
 ### 사용법
 ```bash
+# 회의 상태 사전 체크 (캡처 전에 실행)
+python zoom/zoom_check.py
+
 # 회의 참가
 python zoom/zoom_join.py
 
@@ -175,6 +194,24 @@ python zoom/zoom_leave.py
 
 # 녹화 파일 이동
 python zoom/move_videos.py
+```
+
+### 네트워크 끊김 자동 복구
+
+`zoom_check.py` 또는 `estcapture.py` 실행 시:
+1. 연결 끊김 경고창 감지 → 자동으로 닫기
+2. Zoom 앱 정리 후 회의 재참가
+3. 회의 창 활성화 + 회의 탭 클릭
+
+### 작업 스케줄러 예시
+
+```
+08:55  zoom_check.py     ← 사전 체크
+09:10  estcapture.py     ← 캡처
+
+09:45  zoom_check.py
+10:00  estcapture.py
+...
 ```
 
 ---
