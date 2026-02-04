@@ -1,7 +1,8 @@
-# EST 강의장 자동화 클라이언트 (출결용)
+# EST 강의장 자동화 클라이언트
 
-원격 강의 출결 관리를 위한 자동화 스크립트 모음입니다.
+강의장 녹화 및 출결 관리를 위한 자동화 스크립트 모음입니다.
 
+- **녹화 파일 업로드**: rclone으로 SFTP 서버에 자동 업로드
 - **출결 화면 캡처**: 교시별 Zoom 화면 자동 스크린샷
 - **Zoom 자동화**: 회의 자동 참가/퇴장, 네트워크 끊김 자동 복구
 - **OBS 녹화 제어**: WebSocket으로 녹화 시작/중지
@@ -20,6 +21,8 @@ install.bat
 2. 압축 해제
 3. `install.bat` 실행 (관리자 권한)
 
+자세한 설치 과정은 `설치가이드.txt` 참고
+
 ## 업데이트
 
 ```batch
@@ -32,8 +35,8 @@ git pull
 ## 사용법
 
 ### 자동 업로드 (작업 스케줄러)
-- `run_upload_auto.bat`를 Windows 작업 스케줄러에 등록
-- 점심시간/퇴근 후 자동 실행
+- `register_task.bat` 실행하여 작업 스케줄러에 등록
+- 10분마다 + 로그온 시 자동 실행
 
 ### 수동 업로드
 - `run_upload.bat` 실행
@@ -47,12 +50,17 @@ git pull
 client_est/
 ├── install.bat          # 전체 설치 마법사
 ├── setup.bat            # 환경 설치 (Miniconda, rclone)
+├── setup_rclone.bat     # rclone SFTP 설정
+├── register_task.bat    # 작업 스케줄러 등록
 ├── run_upload.bat       # 수동 업로드
 ├── run_upload_auto.bat  # 자동 업로드 (스케줄러용)
 ├── run_init.bat         # 설정 변경
 ├── update.bat           # 업데이트 (git pull)
 ├── config.yaml          # 설정 파일 (설치 후 생성)
 ├── logs/                # 로그 폴더
+│
+├── 설치가이드.txt       # Windows 설치 안내
+├── OBS_설정가이드.txt   # OBS 상세 설정 안내
 │
 ├── capture/             # 출결 화면 캡처
 │   ├── estcapture.py    # 교시별 스크린샷
@@ -62,6 +70,9 @@ client_est/
 │   ├── obs_start.ps1    # OBS 실행
 │   ├── obs_recordStart.py  # 녹화 시작
 │   └── obs_recordStop.py   # 녹화 중지
+│
+├── task_scheduler/      # 작업 스케줄러 XML
+│   └── 녹화파일_자동업로드.xml
 │
 └── zoom/                # Zoom 자동화 (출결용 특수 케이스)
     ├── zoom_utils.py    # 핵심 유틸리티 모듈
