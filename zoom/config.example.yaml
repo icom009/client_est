@@ -1,0 +1,21 @@
+# Zoom 자동화 설정 파일
+# 코드 수정 없이 여기서 설정 변경 가능
+# 사용 시 config.yaml로 복사 후 수정
+
+meeting:
+  id: "000 0000 0000"   # 회의 ID
+  password: ""          # 비밀번호
+  no_audio: true        # 오디오 연결 안함
+
+window:
+  maximize: true        # 창 최대화
+  view_mode: "gallery"  # gallery 또는 speaker
+
+timing:
+  dialog_wait: 10       # 다이얼로그 대기 시간(초)
+  password_wait: 3      # 비밀번호 창 대기 시간(초)
+  connect_wait: 30      # 연결 대기 시간(초)
+  step_delay: 0.5       # 단계 간 대기(초)
+
+leave:
+  close_app: true       # 회의 나가기 후 Zoom 앱도 종료할지
