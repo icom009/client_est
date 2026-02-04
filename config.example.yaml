@@ -1,0 +1,20 @@
+# EST/Jellyfin용 강의장 클라이언트 설정 예시
+
+# 강의장 정보
+classroom_name: "EST"
+folder_name: ""  # 서버 업로드 폴더명 (빈칸=루트)
+
+# 녹화 설정
+recording_folder: "D:\\OBS녹화"
+uploaded_folder: "D:\\OBS녹화\\uploaded"
+extensions:
+  - ".mp4"
+  - ".mkv"
+  - ".avi"
+  - ".mov"
+
+# rclone 설정
+rclone:
+  remote_name: "est-sftp"      # rclone config에서 설정한 리모트 이름
+  remote_path: "/recordings"   # 원격 서버 경로
+  bandwidth_limit: "0"         # 0 = 무제한, 또는 "50M" = 50MB/s 제한

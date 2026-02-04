@@ -1,0 +1,22 @@
+# 설정 파일 (민감 정보)
+config.yaml
+
+# 로그
+logs/
+
+# rclone 바이너리
+rclone/
+
+# 생성되는 실행 스크립트
+run_upload.bat
+run_upload_auto.bat
+run_init.bat
+update.bat
+
+# Python
+__pycache__/
+*.pyc
+
+# Windows
+Thumbs.db
+Desktop.ini
