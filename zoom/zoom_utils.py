@@ -575,40 +575,90 @@ def join_meeting(meeting_id=None, password=None, no_audio=True, verbose=True):
     return True
 
 
-def _dismiss_popups():
-    """녹화 알림 등 팝업 닫기"""
+def dismiss_recording_alert():
+    """
+    녹화 알림 등 팝업 닫기
+
+    "이 회의는 녹화되는 중입니다" 등의 알림창을 닫습니다.
+
+    Returns:
+        bool: 알림창을 닫았는지 여부
+    """
+    dismissed = False
+
+    # 녹화 알림 관련 키워드
+    recording_keywords = [
+        "녹화", "recording", "recorded", "기록"
+    ]
+
+    # 닫기 버튼 텍스트
+    dismiss_buttons = ["확인", "OK", "Got it", "알겠습니다", "닫기", "Close"]
+
     try:
         desktop = Desktop(backend="uia")
         for win in desktop.windows():
             try:
-                title = win.window_text()
-                if "녹화" in title or "recording" in title.lower():
-                    for btn_title in ["확인", "OK", "Got it", "알겠습니다"]:
+                title = win.window_text().lower()
+
+                # 제목에 녹화 관련 키워드가 있는지 확인
+                is_recording_alert = any(kw.lower() in title for kw in recording_keywords)
+
+                # 창 내부 텍스트도 확인
+                if not is_recording_alert:
+                    try:
+                        texts = win.descendants(control_type="Text")
+                        for t in texts[:10]:
+                            text = t.window_text().lower()
+                            if any(kw.lower() in text for kw in recording_keywords):
+                                is_recording_alert = True
+                                break
+                    except:
+                        pass
+
+                if is_recording_alert:
+                    for btn_title in dismiss_buttons:
                         try:
                             btn = win.child_window(title=btn_title, control_type="Button")
-                            if btn.exists(timeout=0.5):
+                            if btn.exists(timeout=0.3):
                                 btn.click_input()
-                                return True
+                                time.sleep(0.3)
+                                dismissed = True
+                        except:
+                            continue
+
+                        # title_re로도 시도
+                        try:
+                            btn = win.child_window(title_re=f".*{btn_title}.*", control_type="Button")
+                            if btn.exists(timeout=0.3):
+                                btn.click_input()
+                                time.sleep(0.3)
+                                dismissed = True
                         except:
                             continue
             except:
                 continue
 
-        # 회의 창 내부 팝업
+        # 회의 창 내부 팝업 (오버레이 형태)
         win = find_meeting_window(timeout=1)
         if win:
-            for btn_title in ["확인", "OK", "Got it", "알겠습니다"]:
+            for btn_title in dismiss_buttons:
                 try:
                     btn = win.child_window(title=btn_title, control_type="Button")
-                    if btn.exists(timeout=0.5):
+                    if btn.exists(timeout=0.3):
                         btn.click_input()
                         time.sleep(0.3)
-                        return True
+                        dismissed = True
                 except:
                     continue
     except:
         pass
-    return False
+
+    return dismissed
+
+
+def _dismiss_popups():
+    """녹화 알림 등 팝업 닫기 (내부용 - 호환성 유지)"""
+    return dismiss_recording_alert()
 
 
 # ============================================
@@ -807,6 +857,15 @@ def ensure_meeting(verbose=True):
 
     click_meeting_tab()
     log("[O] 회의 탭 클릭 완료")
+
+    # 5. 녹화 알림창 등 팝업 닫기 (캡처 전 정리)
+    log("")
+    log("[*] 알림창 확인 중...")
+    if dismiss_recording_alert():
+        log("[O] 녹화 알림창 닫음")
+        time.sleep(0.3)
+    else:
+        log("[O] 닫을 알림창 없음")
 
     return True
 
