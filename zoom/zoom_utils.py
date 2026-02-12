@@ -198,10 +198,15 @@ def check_disconnect_alert():
         desktop = Desktop(backend="uia")
         for win in desktop.windows():
             try:
+                # Zoom 관련 창만 검사
+                cls = win.class_name()
+                if not ("zoom" in cls.lower() or cls.startswith("ZP") or cls.startswith("Conf") or cls.startswith("zW")):
+                    continue
+
                 title = win.window_text().lower()
                 for keyword in disconnect_keywords:
                     if keyword.lower() in title:
-                        _logger.info(f"[check_disconnect] 경고창 감지! 창제목='{title}' 매칭='{keyword}'")
+                        _logger.info(f"[check_disconnect] 경고창 감지! class={cls} 창제목='{title}' 매칭='{keyword}'")
                         return True
 
                 # 창 내부 텍스트도 확인
@@ -211,7 +216,7 @@ def check_disconnect_alert():
                         text = t.window_text().lower()
                         for keyword in disconnect_keywords:
                             if keyword.lower() in text:
-                                _logger.info(f"[check_disconnect] 경고창 감지! 내부텍스트='{text}' 매칭='{keyword}'")
+                                _logger.info(f"[check_disconnect] 경고창 감지! class={cls} 내부텍스트='{text}' 매칭='{keyword}'")
                                 return True
                 except:
                     pass
