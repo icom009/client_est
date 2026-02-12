@@ -184,12 +184,14 @@ def check_disconnect_alert():
         bool: 경고창 존재 여부
     """
     disconnect_keywords = [
-        # 한글
-        "연결이 끊어", "연결 끊김", "연결이 불안정", "네트워크 연결",
-        "회의에서 연결", "재연결", "인터넷 연결",
-        # 영문
-        "disconnected", "connection", "unstable", "reconnect",
-        "network", "internet", "lost connection"
+        # 한글 - 실제 경고창 문구만 (구체적으로)
+        "연결이 끊어졌습니다",
+        "연결이 불안정합니다",
+        "인터넷 연결이 불안정",
+        # 영문 - 실제 경고창 문구만 (구체적으로)
+        "your internet connection is unstable",
+        "you have been disconnected",
+        "network connection was lost",
     ]
 
     try:
@@ -199,6 +201,7 @@ def check_disconnect_alert():
                 title = win.window_text().lower()
                 for keyword in disconnect_keywords:
                     if keyword.lower() in title:
+                        _logger.info(f"[check_disconnect] 경고창 감지! 창제목='{title}' 매칭='{keyword}'")
                         return True
 
                 # 창 내부 텍스트도 확인
@@ -208,6 +211,7 @@ def check_disconnect_alert():
                         text = t.window_text().lower()
                         for keyword in disconnect_keywords:
                             if keyword.lower() in text:
+                                _logger.info(f"[check_disconnect] 경고창 감지! 내부텍스트='{text}' 매칭='{keyword}'")
                                 return True
                 except:
                     pass
