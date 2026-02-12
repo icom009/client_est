@@ -212,7 +212,13 @@ python zoom/move_videos.py
 `zoom_check.py` 또는 `estcapture.py` 실행 시:
 1. 연결 끊김 경고창 감지 → 자동으로 닫기
 2. Zoom 앱 정리 후 회의 재참가
-3. 회의 창 활성화 + 회의 탭 클릭
+3. 회의 창 활성화 + 회의 탭 1회 클릭 → 빈 곳 클릭 → 마우스 좌측 하단으로 이동
+
+### 회의 감지 로그
+
+회의 상태 판단 과정이 `C:\scripts\logs\zoom_meeting.log`에 기록됩니다.
+- `is_in_meeting()` 결과 및 감지된 Zoom 창 클래스명
+- `ensure_meeting()` 판단 결과 (정상 유지 / Zoom 재시작 여부)
 
 ### 작업 스케줄러 예시
 

@@ -8,6 +8,8 @@ Zoom 자동화 유틸리티 모듈
 import os
 import subprocess
 import time
+import logging
+from datetime import datetime
 from pathlib import Path
 
 import yaml
@@ -18,6 +20,18 @@ import pyautogui
 # 설정
 # ============================================
 CONFIG_PATH = Path(__file__).parent / "config.yaml"
+
+# 로그 설정
+LOG_DIR = Path(r"C:\scripts\logs")
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+LOG_FILE = LOG_DIR / "zoom_meeting.log"
+
+_logger = logging.getLogger("zoom_utils")
+_logger.setLevel(logging.DEBUG)
+if not _logger.handlers:
+    _fh = logging.FileHandler(LOG_FILE, encoding="utf-8")
+    _fh.setFormatter(logging.Formatter("%(asctime)s  %(message)s", datefmt="%Y-%m-%d %H:%M:%S"))
+    _logger.addHandler(_fh)
 
 # Zoom 창 클래스명
 CLASS_MAIN = "ZPPTMainFrmWndClassEx"        # 메인 화면
@@ -99,7 +113,24 @@ def is_in_meeting():
     # 회의 창 존재 확인
     win = find_meeting_window(timeout=1)
     if win:
+        _logger.info("[is_in_meeting] 회의 창 발견 (ConfMultiTabContentWndClass) → True")
         return True
+
+    _logger.info("[is_in_meeting] 회의 창 못찾음. Leave 버튼 탐색 시작...")
+
+    # 데스크탑에 있는 모든 Zoom 관련 창 정보 기록
+    try:
+        desktop = Desktop(backend="uia")
+        for win in desktop.windows():
+            try:
+                cls = win.class_name()
+                title = win.window_text()
+                if "zoom" in cls.lower() or cls.startswith("ZP") or cls.startswith("Conf") or cls.startswith("zW"):
+                    _logger.info(f"  [창 발견] class={cls}  title={title}")
+            except:
+                continue
+    except:
+        pass
 
     # Leave 버튼이 있는지 확인 (회의 중 표시)
     try:
@@ -109,12 +140,14 @@ def is_in_meeting():
                 for title in ["Leave", "나가기"]:
                     btn = win.child_window(title_re=f".*{title}.*", control_type="Button")
                     if btn.exists(timeout=0.3):
+                        _logger.info(f"[is_in_meeting] '{title}' 버튼 발견 → True")
                         return True
             except:
                 continue
     except:
         pass
 
+    _logger.info("[is_in_meeting] 회의 감지 실패 → False")
     return False
 
 
@@ -312,16 +345,21 @@ def click_meeting_tab():
     try:
         rect = win.rectangle()
 
-        # "회의" 탭 위치 (x=254, y=22)
+        # 1) "회의" 탭 위치 1번 클릭
         tab_x = rect.left + 254
         tab_y = rect.top + 22
-
-        pyautogui.click(tab_x, tab_y, clicks=3, interval=0.3)
+        pyautogui.click(tab_x, tab_y)
         time.sleep(0.3)
 
-        # 마우스를 화면 구석으로 이동
+        # 2) 빈 곳 클릭 (창 중앙부 - 열린 메뉴/패널 닫기)
+        center_x = (rect.left + rect.right) // 2
+        center_y = (rect.top + rect.bottom) // 2
+        pyautogui.click(center_x, center_y)
+        time.sleep(0.2)
+
+        # 4) 마우스를 화면 좌측 하단 끝으로 이동 (화면에서 안 보이게)
         screen_width, screen_height = pyautogui.size()
-        pyautogui.moveTo(1, screen_height - 1)
+        pyautogui.moveTo(0, screen_height - 1)
 
         return True
     except Exception as e:
@@ -813,6 +851,9 @@ def ensure_meeting(verbose=True):
         if verbose:
             print(msg)
 
+    _logger.info("=" * 40)
+    _logger.info("[ensure_meeting] 시작")
+
     log("=" * 50)
     log("회의 상태 확인")
     log("=" * 50)
@@ -821,6 +862,7 @@ def ensure_meeting(verbose=True):
 
     # 1. 연결 끊김 경고창 확인 → 있으면 닫고 재참가 필요
     if check_disconnect_alert():
+        _logger.info("[ensure_meeting] 연결 끊김 경고창 감지 → 재참가 필요")
         log("[!] 연결 끊김 경고창 감지")
         log("[*] 경고창 닫는 중...")
         dismiss_disconnect_alert()
@@ -829,11 +871,15 @@ def ensure_meeting(verbose=True):
 
     # 2. 회의 중인지 확인
     elif not is_in_meeting():
+        _logger.info("[ensure_meeting] is_in_meeting()=False → 재참가 필요")
         log("[X] 회의 연결 안됨")
         need_rejoin = True
+    else:
+        _logger.info("[ensure_meeting] 회의 연결 정상 → 재참가 불필요")
 
     # 3. 재참가 필요하면 Zoom 정리 후 재참가
     if need_rejoin:
+        _logger.info("[ensure_meeting] *** Zoom 종료 후 재참가 시작 ***")
         log("[*] Zoom 정리 중...")
         cleanup_zoom()
         log("[O] Zoom 정리 완료")
@@ -841,8 +887,10 @@ def ensure_meeting(verbose=True):
         log("회의 참가 시작...")
 
         if not join_meeting(verbose=verbose):
+            _logger.info("[ensure_meeting] 재참가 실패")
             log("[X] 회의 재참가 실패")
             return False
+        _logger.info("[ensure_meeting] 재참가 성공")
         log("[O] 회의 재참가 성공!")
     else:
         log("[O] 회의 연결 중")
